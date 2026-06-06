@@ -24,11 +24,21 @@ st.sidebar.markdown(f"**Calculated BDP:** ~`{bdp_packets}` packets")
 
 st.sidebar.header("TCP Parameters")
 algo = st.sidebar.selectbox("Congestion Control Algorithm", ["CUBIC", "AIMD (Reno)"])
-max_window_packets = st.sidebar.number_input("Max Window Limit (rwnd in pkts)", value=bdp_packets * 2, step=100)
+
+# iOS Default Window Calculation
+# 131,072 bytes / 1500 bytes per packet = ~87 packets
+ios_default_window_pkts = int(131072 / packet_size_bytes)
+
+max_window_packets = st.sidebar.number_input(
+    "Max Window Limit (rwnd in pkts)", 
+    value=ios_default_window_pkts, 
+    step=10
+)
+
 num_flows = st.sidebar.slider("Number of TCP Flows", 1, 20, 3)
 
 # Calculate BDP / sqrt(N) for the default buffer size
-default_buffer = int(bdp_packets / np.sqrt(num_flows))
+default_buffer = int(bdp_packets / np.sqrt(num_flows)) if num_flows > 0 else bdp_packets
 buffer_size = st.sidebar.slider("Buffer Size (packets)", 0, bdp_packets * 5, default_buffer)
 sim_steps = st.sidebar.slider("Simulation Steps (RTTs)", 100, 1000, 300)
 
@@ -48,6 +58,7 @@ def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd
     history = []
     
     for step in range(steps):
+        # Enforce max window limit (rwnd cap)
         cwnds = np.minimum(cwnds, max_rwnd)
         total_inflight = np.sum(cwnds)
         
@@ -76,6 +87,7 @@ def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd
                         ssthresh[i] = max(2.0, cwnds[i] / 2.0)
                         cwnds[i] = ssthresh[i]
         else:
+            # Growth Phase
             for i in range(flows_count):
                 if cwnds[i] < ssthresh[i]:
                     cwnds[i] *= 2

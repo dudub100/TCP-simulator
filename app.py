@@ -22,12 +22,14 @@ bdp_packets = int(packets_per_sec * rtt_sec)
 
 st.sidebar.markdown(f"**Calculated BDP:** ~`{bdp_packets}` packets")
 
-buffer_size = st.sidebar.slider("Buffer Size (packets)", 0, bdp_packets * 5, bdp_packets)
-
 st.sidebar.header("TCP Parameters")
 algo = st.sidebar.selectbox("Congestion Control Algorithm", ["CUBIC", "AIMD (Reno)"])
 max_window_packets = st.sidebar.number_input("Max Window Limit (rwnd in pkts)", value=bdp_packets * 2, step=100)
 num_flows = st.sidebar.slider("Number of TCP Flows", 1, 20, 3)
+
+# Calculate BDP / sqrt(N) for the default buffer size
+default_buffer = int(bdp_packets / np.sqrt(num_flows))
+buffer_size = st.sidebar.slider("Buffer Size (packets)", 0, bdp_packets * 5, default_buffer)
 sim_steps = st.sidebar.slider("Simulation Steps (RTTs)", 100, 1000, 300)
 
 def pkts_to_mbps(pkts):
@@ -36,11 +38,8 @@ def pkts_to_mbps(pkts):
 # --- SIMULATION LOGIC ---
 def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd):
     cwnds = np.ones(flows_count) 
-    
-    # Initialize ssthresh to the maximum possible window size
     ssthresh = np.full(flows_count, max_rwnd, dtype=float)
     
-    # CUBIC specific state variables
     w_max = np.zeros(flows_count)
     time_since_drop = np.zeros(flows_count)
     C_cubic = 0.4
@@ -49,7 +48,6 @@ def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd
     history = []
     
     for step in range(steps):
-        # Enforce max window limit (rwnd cap)
         cwnds = np.minimum(cwnds, max_rwnd)
         total_inflight = np.sum(cwnds)
         
@@ -61,41 +59,35 @@ def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd
             queue_occupancy = total_inflight - bdp
             goodput_packets = bdp 
             
-        # Check for Buffer Overflow (Drop-Tail)
+        # Check for Buffer Overflow
         dropped = False
         if queue_occupancy > buffer_capacity:
             dropped = True
             queue_occupancy = buffer_capacity 
             
             for i in range(flows_count):
-                if random.random() < 0.5: # 50% chance a flow loses a packet
+                if random.random() < 0.5: 
                     if algorithm == "CUBIC":
                         w_max[i] = cwnds[i]
-                        # Set new ssthresh and reduce cwnd
                         ssthresh[i] = max(2.0, cwnds[i] * beta_cubic)
                         cwnds[i] = ssthresh[i]
                         time_since_drop[i] = 0
-                    else: # AIMD (Fast Recovery simulation)
+                    else: 
                         ssthresh[i] = max(2.0, cwnds[i] / 2.0)
                         cwnds[i] = ssthresh[i]
         else:
-            # Growth Phase
             for i in range(flows_count):
                 if cwnds[i] < ssthresh[i]:
-                    # --- SLOW START ---
-                    # cwnd doubles every RTT until it hits ssthresh
                     cwnds[i] *= 2
-                    # Prevent overshooting ssthresh in one massive jump
                     if cwnds[i] > ssthresh[i]:
                         cwnds[i] = ssthresh[i]
                 else:
-                    # --- CONGESTION AVOIDANCE ---
                     if algorithm == "CUBIC":
                         time_since_drop[i] += rtt_sec
                         K = np.cbrt((w_max[i] * (1 - beta_cubic)) / C_cubic)
                         w_target = C_cubic * (time_since_drop[i] - K)**3 + w_max[i]
                         cwnds[i] = max(cwnds[i] + 1/cwnds[i], w_target)
-                    else: # AIMD
+                    else: 
                         cwnds[i] += 1
             
         state = {
@@ -119,8 +111,12 @@ df = run_simulation(bdp_packets, buffer_size, num_flows, sim_steps, algo, max_wi
 # --- VISUALIZATION ---
 st.header("Simulation Results")
 
+# Calculate metrics
+avg_goodput = df['Goodput (Mbps)'].mean()
+avg_utilization = (avg_goodput / link_bw_mbps) * 100
+
 col1, col2, col3 = st.columns(3)
-col1.metric("Max Goodput Achieved", f"{df['Goodput (Mbps)'].max():.2f} Mbps")
+col1.metric("Average Link Utilization", f"{avg_utilization:.2f} %")
 col2.metric("Total Drop Events", df["Drop Event"].sum())
 col3.metric("Peak Queue Occupancy", f"{df['Queue Occupancy'].max():.0f} pkts")
 

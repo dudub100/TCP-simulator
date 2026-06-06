@@ -4,14 +4,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 
-st.set_page_config(page_title="TCP Goodput & CUBIC Simulator", layout="wide")
+st.set_page_config(page_title="TCP Simulation: Slow Start, CUBIC & AIMD", layout="wide")
 
 st.title("Advanced TCP Flow & Buffer Simulator")
 
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("Network Parameters")
 
-# Scaled up to 10 Gbps (10,000 Mbps)
 link_bw_mbps = st.sidebar.slider("Bottleneck Bandwidth (Mbps)", 10, 10000, 1000, step=10)
 rtt_ms = st.sidebar.slider("Base RTT (ms)", 5, 200, 50)
 packet_size_bytes = 1500
@@ -31,13 +30,15 @@ max_window_packets = st.sidebar.number_input("Max Window Limit (rwnd in pkts)", 
 num_flows = st.sidebar.slider("Number of TCP Flows", 1, 20, 3)
 sim_steps = st.sidebar.slider("Simulation Steps (RTTs)", 100, 1000, 300)
 
-# Helper function to convert packets per RTT to Mbps
 def pkts_to_mbps(pkts):
     return (pkts * packet_size_bytes * 8) / 1_000_000 / rtt_sec
 
 # --- SIMULATION LOGIC ---
 def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd):
     cwnds = np.ones(flows_count) 
+    
+    # Initialize ssthresh to the maximum possible window size
+    ssthresh = np.full(flows_count, max_rwnd, dtype=float)
     
     # CUBIC specific state variables
     w_max = np.zeros(flows_count)
@@ -58,7 +59,7 @@ def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd
             goodput_packets = total_inflight
         else:
             queue_occupancy = total_inflight - bdp
-            goodput_packets = bdp # Bottleneck limits delivery rate
+            goodput_packets = bdp 
             
         # Check for Buffer Overflow (Drop-Tail)
         dropped = False
@@ -70,32 +71,39 @@ def run_simulation(bdp, buffer_capacity, flows_count, steps, algorithm, max_rwnd
                 if random.random() < 0.5: # 50% chance a flow loses a packet
                     if algorithm == "CUBIC":
                         w_max[i] = cwnds[i]
-                        cwnds[i] = max(1, cwnds[i] * beta_cubic) # 30% reduction
+                        # Set new ssthresh and reduce cwnd
+                        ssthresh[i] = max(2.0, cwnds[i] * beta_cubic)
+                        cwnds[i] = ssthresh[i]
                         time_since_drop[i] = 0
-                    else: # AIMD
-                        cwnds[i] = max(1, cwnds[i] / 2.0) # 50% reduction
+                    else: # AIMD (Fast Recovery simulation)
+                        ssthresh[i] = max(2.0, cwnds[i] / 2.0)
+                        cwnds[i] = ssthresh[i]
         else:
-            # Additive Increase Phase
+            # Growth Phase
             for i in range(flows_count):
-                if algorithm == "CUBIC":
-                    if w_max[i] == 0:
-                        # Standard linear growth before first drop
-                        cwnds[i] += 1 
-                    else:
+                if cwnds[i] < ssthresh[i]:
+                    # --- SLOW START ---
+                    # cwnd doubles every RTT until it hits ssthresh
+                    cwnds[i] *= 2
+                    # Prevent overshooting ssthresh in one massive jump
+                    if cwnds[i] > ssthresh[i]:
+                        cwnds[i] = ssthresh[i]
+                else:
+                    # --- CONGESTION AVOIDANCE ---
+                    if algorithm == "CUBIC":
                         time_since_drop[i] += rtt_sec
                         K = np.cbrt((w_max[i] * (1 - beta_cubic)) / C_cubic)
                         w_target = C_cubic * (time_since_drop[i] - K)**3 + w_max[i]
-                        # simplified Reno-fallback: ensure at least +1 growth
                         cwnds[i] = max(cwnds[i] + 1/cwnds[i], w_target)
-                else: # AIMD
-                    cwnds[i] += 1
+                    else: # AIMD
+                        cwnds[i] += 1
             
         state = {
             "Step": step,
             "Total Inflight": total_inflight,
             "Queue Occupancy": queue_occupancy,
-            "Throughput (Mbps)": pkts_to_mbps(total_inflight), # Data injected
-            "Goodput (Mbps)": pkts_to_mbps(goodput_packets),   # Data delivered
+            "Throughput (Mbps)": pkts_to_mbps(total_inflight), 
+            "Goodput (Mbps)": pkts_to_mbps(goodput_packets),   
             "Drop Event": 1 if dropped else 0
         }
         
@@ -116,11 +124,11 @@ col1.metric("Max Goodput Achieved", f"{df['Goodput (Mbps)'].max():.2f} Mbps")
 col2.metric("Total Drop Events", df["Drop Event"].sum())
 col3.metric("Peak Queue Occupancy", f"{df['Queue Occupancy'].max():.0f} pkts")
 
-# Plot 1: Throughput vs Goodput (Mbps)
+# Plot 1: Throughput vs Goodput
 st.subheader("Throughput vs. Goodput")
 fig1, ax1 = plt.subplots(figsize=(10, 4))
-ax1.plot(df["Step"], df["Throughput (Mbps)"], label="Throughput (Attempted Send Rate)", color="blue", alpha=0.6)
-ax1.plot(df["Step"], df["Goodput (Mbps)"], label="Goodput (Actual Delivery Rate)", color="green", linewidth=2)
+ax1.plot(df["Step"], df["Throughput (Mbps)"], label="Throughput (Attempted Send)", color="blue", alpha=0.6)
+ax1.plot(df["Step"], df["Goodput (Mbps)"], label="Goodput (Actual Delivery)", color="green", linewidth=2)
 ax1.axhline(y=link_bw_mbps, color="red", linestyle="--", alpha=0.5, label="Link Capacity")
 ax1.set_xlabel("Time (RTT Steps)")
 ax1.set_ylabel("Bandwidth (Mbps)")

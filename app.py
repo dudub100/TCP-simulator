@@ -51,7 +51,7 @@ else:
     # Fallback if Elephants = 0 to prevent division by zero
     stanford_default = bdp_packets
 
-buffer_size = st.sidebar.slider("Router Buffer Size (packets)", 0, bdp_packets * 5, stanford_default)
+buffer_size = (st.sidebar.slider("Router Buffer Size (packets)", 0, bdp_packets * packet_size_bytes /1e6 * 5, stanford_default * packet_size_bytes /1e6)) * 1e6 / packet_size_bytes
 
 st.sidebar.markdown("---")
 

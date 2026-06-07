@@ -23,11 +23,16 @@ if link_bw_mbps > nic_bw_mbps:
 rtt_ms = st.sidebar.slider("Base RTT (ms)", 5, 200, 50)
 packet_size_bytes = 1500
 
+# 1. Calculate BDP
 rtt_sec = rtt_ms / 1000.0
 packets_per_sec = (link_bw_mbps * 1_000_000) / (packet_size_bytes * 8)
 bdp_packets = int(packets_per_sec * rtt_sec)
-buffer_size = st.sidebar.slider("Router Buffer Size (packets)", 0, bdp_packets * 5, bdp_packets)
 
+# Print BDP on the Sidebar
+st.sidebar.markdown(f"### **Calculated BDP:** `{bdp_packets}` packets")
+st.sidebar.markdown("---")
+
+# 2. Get Traffic Profile FIRST
 st.sidebar.header("Traffic Profile (Elephants & Mice)")
 num_elephants = st.sidebar.number_input("Elephant Flows (Always Active)", 0, 10, 1)
 num_mice_pool = st.sidebar.number_input("Mice Flow Pool (Max Concurrent)", 0, 50, 15)
@@ -35,10 +40,24 @@ num_mice_pool = st.sidebar.number_input("Mice Flow Pool (Max Concurrent)", 0, 50
 mice_prob = st.sidebar.slider("Mouse Arrival Probability (per RTT)", 0.0, 1.0, 0.2)
 mice_size_pkts = st.sidebar.slider("Mouse File Size (Avg Packets)", 10, 500, 100)
 
+st.sidebar.markdown("---")
+
+# 3. Calculate Stanford Buffer Default and Render Slider
+st.sidebar.header("Router Settings")
+if num_elephants > 0:
+    stanford_default = int(bdp_packets / np.sqrt(num_elephants))
+else:
+    # Fallback if Elephants = 0 to prevent division by zero
+    stanford_default = bdp_packets
+
+buffer_size = st.sidebar.slider("Router Buffer Size (packets)", 0, bdp_packets * 5, stanford_default)
+
+st.sidebar.markdown("---")
+
+# 4. TCP Parameters
+st.sidebar.header("TCP Parameters")
 algo = st.sidebar.selectbox("Congestion Control", ["CUBIC", "AIMD (Reno)"])
 sim_steps = st.sidebar.slider("Simulation Steps (RTTs)", 100, 1000, 300)
-
-# Bring back the Max Window slider, defaulting to a massive window (Window Scaling enabled)
 max_window_packets = st.sidebar.number_input("Max Window Limit (rwnd in pkts)", value=bdp_packets * 2, step=100)
 
 def pkts_to_mbps(pkts):

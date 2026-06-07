@@ -37,7 +37,9 @@ mice_size_pkts = st.sidebar.slider("Mouse File Size (Avg Packets)", 10, 500, 100
 
 algo = st.sidebar.selectbox("Congestion Control", ["CUBIC", "AIMD (Reno)"])
 sim_steps = st.sidebar.slider("Simulation Steps (RTTs)", 100, 1000, 300)
-ios_default_window = int(131072 / packet_size_bytes)
+
+# Bring back the Max Window slider, defaulting to a massive window (Window Scaling enabled)
+max_window_packets = st.sidebar.number_input("Max Window Limit (rwnd in pkts)", value=bdp_packets * 2, step=100)
 
 def pkts_to_mbps(pkts):
     return (pkts * packet_size_bytes * 8) / 1_000_000 / rtt_sec
@@ -56,6 +58,7 @@ def run_simulation():
     for i in range(num_elephants):
         cwnds[i] = 10 # Linux/iOS default initcwnd
         
+    ssthresh = np.full(total_flows, max_window_packets, dtype=float)
     w_max = np.zeros(total_flows)
     time_since_drop = np.zeros(total_flows)
     C_cubic = 0.4
@@ -78,7 +81,7 @@ def run_simulation():
                     time_since_drop[i] = 0
 
         # Enforce max window
-        cwnds = np.minimum(cwnds, ios_default_window)
+        cwnds = np.minimum(cwnds, max_window_packets)
         
         # Calculate in-flight packets (ONLY from active flows)
         total_inflight = np.sum(cwnds[active]) if np.any(active) else 0

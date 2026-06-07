@@ -75,7 +75,7 @@ def run_simulation():
                     # Randomize file size around the average
                     remaining_pkts[i] = max(10, random.gauss(mice_size_pkts, mice_size_pkts/4))
                     cwnds[i] = 10 # Start with initcwnd
-                    ssthresh[i] = ios_default_window
+                    ssthresh[i] = max_window_packets
                     w_max[i] = 0
                     time_since_drop[i] = 0
 

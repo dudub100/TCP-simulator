@@ -58,7 +58,7 @@ buffer_size_Mbytes = st.sidebar.slider(
     value=float(stanford_default * packet_size_bytes / 1e6),
     step=0.1  # Allows you to smoothly scroll through fractions of a Megabyte
 )
-buffer_size = buffer_size_Mbytes * 1E6 / packet_size_bytes
+buffer_size = int(buffer_size_Mbytes * 1E6 / packet_size_bytes)
 st.sidebar.markdown("---")
 
 # 4. TCP Parameters

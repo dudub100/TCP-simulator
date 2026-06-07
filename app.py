@@ -51,8 +51,8 @@ else:
     # Fallback if Elephants = 0 to prevent division by zero
     stanford_default = bdp_packets
 
-buffer_size = (st.sidebar.slider("Router Buffer Size (packets)", 0, bdp_packets * packet_size_bytes /1e6 * 5, stanford_default * packet_size_bytes /1e6)) * 1e6 / packet_size_bytes
-
+buffer_size_Mbytes = st.sidebar.slider("Router Buffer Size (packets)", 0, bdp_packets * packet_size_bytes /1e6 * 5, stanford_default * packet_size_bytes /1e6)
+buffer_size = buffer_size_Mbytes * 1E6 / packet_size_bytes
 st.sidebar.markdown("---")
 
 # 4. TCP Parameters

@@ -27,9 +27,10 @@ packet_size_bytes = 1500
 rtt_sec = rtt_ms / 1000.0
 packets_per_sec = (link_bw_mbps * 1_000_000) / (packet_size_bytes * 8)
 bdp_packets = int(packets_per_sec * rtt_sec)
+bdp_mbytes = bdp_packets * packet_size_bytes /1e6
 
 # Print BDP on the Sidebar
-st.sidebar.markdown(f"### **Calculated BDP:** `{bdp_packets}` packets")
+st.sidebar.markdown(f"### **Calculated BDP:** `{bdp_packets}` packets  {bdp_mbytes} MB")
 st.sidebar.markdown("---")
 
 # 2. Get Traffic Profile FIRST

@@ -50,7 +50,6 @@ def run_simulation():
     
     # State tracking
     cwnds = np.zeros(total_flows)
-    ssthresh = np.full(total_flows, ios_default_window, dtype=float)
     active = np.array([True]*num_elephants + [False]*num_mice_pool)
     remaining_pkts = np.array([np.inf]*num_elephants + [0.0]*num_mice_pool)
     
